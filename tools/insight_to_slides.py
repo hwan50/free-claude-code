@@ -119,42 +119,118 @@ def metric_font_size(value: str) -> int:
     return 44
 
 
+def _parse_hex(color: str) -> tuple[int, int, int]:
+    h = color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _tint_toward(theme: str, bg: str, ratio: float) -> str:
+    """Mix `theme` toward `bg` by `ratio` (0=theme, 1=bg). Returns #rrggbb."""
+    t = _parse_hex(theme)
+    b = _parse_hex(bg)
+    out = tuple(int(t[i] * (1 - ratio) + b[i] * ratio) for i in range(3))
+    return f"#{out[0]:02x}{out[1]:02x}{out[2]:02x}"
+
+
+def _estimate_wrapped_lines(text: str, font_size: int, max_width: int) -> int:
+    """Conservative line-count estimate. CJK ~= 1.0 em wide, ASCII ~= 0.55 em."""
+    if not text:
+        return 0
+    em = font_size
+    used = 0.0
+    lines = 1
+    for ch in text:
+        code = ord(ch)
+        is_cjk = 0x3000 <= code <= 0x9FFF or 0xFF00 <= code <= 0xFFEF
+        w = em if is_cjk else em * 0.55
+        if used + w > max_width:
+            lines += 1
+            used = w
+        else:
+            used += w
+    return lines
+
+
 def build_slides_config(insight: Insight, canvas: Canvas) -> dict[str, Any]:
     w, h = canvas.width, canvas.height
-    pad_x = 80
-    bar_width = 12
-    text_x = pad_x
-    text_max_width = w - pad_x * 2
-
-    context_y = round(h * 0.10)
-    hook_y = round(h * 0.17)
-    bottom_block_y = round(h * 0.72)
-    source_y = h - 60
+    text_x = 80
+    text_max_width = w - text_x * 2
+    card_x = 60
+    card_w = w - card_x * 2
 
     hook_size = hook_font_size(insight.hook)
     metric_size = metric_font_size(insight.key_metric_value)
 
+    context_y = round(h * 0.10)
+    hook_y = round(h * 0.17)
+    hook_lines = _estimate_wrapped_lines(insight.hook, hook_size, text_max_width)
+    hook_bottom_y = hook_y + int(hook_size * 1.3 * hook_lines)
+    accent_y = hook_bottom_y + 36
+
+    metric_lines = _estimate_wrapped_lines(
+        insight.key_metric_value, metric_size, text_max_width - 32
+    )
+    metric_value_h = int(metric_size * 1.15 * metric_lines)
+
+    label_block = (36 + 28) if insight.key_metric_label else 0
+    value_block = metric_value_h
+    caption_block = (32 + 28) if insight.caption else 0
+    card_pad = 56
+    card_h = card_pad * 2 + label_block + value_block + caption_block
+    card_y = h - 200 - card_h  # leaves room for the source row below
+
+    inner_y = card_y + card_pad
+    label_y = inner_y
+    value_y = label_y + (label_block if insight.key_metric_label else 0)
+    caption_y = value_y + value_block + 28
+
+    source_y = h - 70
+    card_color = _tint_toward(insight.theme_color, insight.bg_color, 0.88)
+
     layers: list[dict[str, Any]] = [
+        # Full-height left color bar (kept for branding continuity)
         {
             "type": "rect",
             "x": 0,
             "y": 0,
-            "width": bar_width,
+            "width": 6,
             "height": h,
+            "color": insight.theme_color,
+        },
+        # Short top horizontal accent — gives a magazine-cover feel
+        {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "width": 220,
+            "height": 8,
             "color": insight.theme_color,
         },
     ]
 
     if insight.context:
+        dot = 18
+        layers.append(
+            {
+                "type": "rect",
+                "x": text_x,
+                "y": context_y + 14,
+                "width": dot,
+                "height": dot,
+                "color": insight.theme_color,
+            }
+        )
         layers.append(
             {
                 "type": "text",
-                "x": text_x,
+                "x": text_x + dot + 18,
                 "y": context_y,
                 "text": insight.context,
                 "fontSize": 36,
-                "color": "#888",
-                "maxWidth": text_max_width,
+                "color": "#ccc",
+                "maxWidth": text_max_width - dot - 18,
             }
         )
 
@@ -167,22 +243,52 @@ def build_slides_config(insight: Insight, canvas: Canvas) -> dict[str, Any]:
             "fontSize": hook_size,
             "color": "#fff",
             "weight": "bold",
-            "lineHeight": 1.25,
+            "lineHeight": 1.3,
             "maxWidth": text_max_width,
             "wrap": True,
         }
     )
 
-    metric_label_y = bottom_block_y
-    metric_value_y = bottom_block_y + 60
-    caption_y = metric_value_y + metric_size + 30
+    # Short accent rule under the hook to close off the hero zone
+    layers.append(
+        {
+            "type": "rect",
+            "x": text_x,
+            "y": accent_y,
+            "width": 96,
+            "height": 4,
+            "color": insight.theme_color,
+        }
+    )
+
+    # Metric card background + left stripe
+    layers.append(
+        {
+            "type": "rect",
+            "x": card_x,
+            "y": card_y,
+            "width": card_w,
+            "height": card_h,
+            "color": card_color,
+        }
+    )
+    layers.append(
+        {
+            "type": "rect",
+            "x": card_x,
+            "y": card_y,
+            "width": 4,
+            "height": card_h,
+            "color": insight.theme_color,
+        }
+    )
 
     if insight.key_metric_label:
         layers.append(
             {
                 "type": "text",
                 "x": text_x,
-                "y": metric_label_y,
+                "y": label_y,
                 "text": insight.key_metric_label,
                 "fontSize": 36,
                 "color": "#bbb",
@@ -195,12 +301,12 @@ def build_slides_config(insight: Insight, canvas: Canvas) -> dict[str, Any]:
             {
                 "type": "text",
                 "x": text_x,
-                "y": metric_value_y,
+                "y": value_y,
                 "text": insight.key_metric_value,
                 "fontSize": metric_size,
                 "color": insight.theme_color,
                 "weight": "bold",
-                "lineHeight": 1.2,
+                "lineHeight": 1.15,
                 "maxWidth": text_max_width,
                 "wrap": True,
             }
@@ -222,13 +328,23 @@ def build_slides_config(insight: Insight, canvas: Canvas) -> dict[str, Any]:
     if insight.source:
         layers.append(
             {
-                "type": "text",
+                "type": "rect",
                 "x": text_x,
+                "y": source_y + 12,
+                "width": 6,
+                "height": 6,
+                "color": insight.theme_color,
+            }
+        )
+        layers.append(
+            {
+                "type": "text",
+                "x": text_x + 18,
                 "y": source_y,
                 "text": insight.source,
                 "fontSize": 24,
-                "color": "#555",
-                "maxWidth": text_max_width,
+                "color": "#666",
+                "maxWidth": text_max_width - 18,
             }
         )
 

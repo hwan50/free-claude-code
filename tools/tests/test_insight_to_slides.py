@@ -86,18 +86,16 @@ def test_build_slides_config_default_canvas_and_background():
     assert config["slides"][0]["background"]["color"] == "#1a1a1a"
 
 
-def test_build_slides_config_color_bar_uses_theme_color():
+def test_build_slides_config_left_color_bar_is_first_layer():
     layers = build_slides_config(Insight(hook="x", theme_color="#abcdef"), Canvas())[
         "slides"
     ][0]["layers"]
-    assert layers[0] == {
-        "type": "rect",
-        "x": 0,
-        "y": 0,
-        "width": 12,
-        "height": 1440,
-        "color": "#abcdef",
-    }
+    bar = layers[0]
+    assert bar["type"] == "rect"
+    assert bar["x"] == 0
+    assert bar["y"] == 0
+    assert bar["height"] == 1440
+    assert bar["color"] == "#abcdef"
 
 
 def test_build_slides_config_hook_layer_white_and_bold():
@@ -120,6 +118,7 @@ def test_build_slides_config_metric_uses_theme_color_and_short_size():
 def test_build_slides_config_omits_empty_optional_fields():
     layers = build_slides_config(Insight(hook="x"), Canvas())["slides"][0]["layers"]
     text_values = [layer.get("text") for layer in layers if layer["type"] == "text"]
+    # only the hook should render when every optional field is empty
     assert text_values == ["x"]
 
 
