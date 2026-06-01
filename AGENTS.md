@@ -1,6 +1,8 @@
 # AGENTIC DIRECTIVE
 
-> This file is identical to CLAUDE.md. Keep them in sync.
+> This file holds the authoritative directives. [CLAUDE.md](CLAUDE.md) extends them
+> with codebase structure, workflows, and conventions. Keep the two in sync when
+> directives change.
 
 ## CODING ENVIRONMENT
 
